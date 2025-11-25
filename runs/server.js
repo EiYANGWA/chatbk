@@ -9,8 +9,9 @@ const app = express();
 const server = http.createServer(app);
 
 // อ่านค่าจาก .env
-const PORT = process.env.PORT || 3000;
-const FRONTEND_URL = process.env.FRONTEND_URL || "https://appeic.web.app";
+const PORT = process.env.PORT;
+const FRONTEND_URL = process.env.FRONTEND_URL;
+
 
 // CORS สำหรับ frontend บน Firebase
 const io = new Server(server, {

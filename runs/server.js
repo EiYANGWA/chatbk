@@ -1,57 +1,58 @@
-// runs/server.js
 require("dotenv").config();
 const express = require("express");
 const http = require("http");
 const cors = require("cors");
 const { Server } = require("socket.io");
-
 const IoController = require("./io_controller");
+const ChatManager = require("./chat");
 
 const app = express();
 const server = http.createServer(app);
-
 const PORT = process.env.PORT || 5255;
-const FRONTEND_URL = process.env.FRONTEND_URL || "*";
 
-// Socket.IO server
-const io = new Server(server, {
-  cors: {
-    origin: FRONTEND_URL,
-    methods: ["GET", "POST"]
+// แยกหลาย origin จาก .env
+const FRONTEND_URLS = process.env.FRONTEND_URL
+  ? process.env.FRONTEND_URL.split(",").map(url => url.trim())
+  : ["*"];
+
+// ตั้งค่า CORS
+app.use(cors({
+  origin: function(origin, callback){
+    if(!origin) return callback(null, true); // allow non-browser clients
+    if(FRONTEND_URLS.indexOf(origin) !== -1) {
+      callback(null, true);
+    } else {
+      callback(new Error("Not allowed by CORS"));
+    }
   }
-});
+}));
 
-// Middleware
 app.use(express.json());
-app.use(cors({ origin: FRONTEND_URL }));
 
-// Instantiate IO Controller (LED Simulation)
+// Socket.IO พร้อม CORS
+const io = new Server(server, {
+  cors: { origin: FRONTEND_URLS, methods: ["GET", "POST"] }
+});
+
+// Chat Manager (ระบบเดิม)
+const users = new Map();
+const chatManager = new ChatManager(users, io);
+io.on("connection", socket => chatManager.handleConnection(socket));
+
+// LED Controller
 const ioCtrl = new IoController(io);
+ioCtrl.registerRoutes(app);
 
-// REST APIs
-app.get("/led/state", (req, res) => ioCtrl.getState(req, res));
-app.post("/led/on", (req, res) => ioCtrl.turnOn(req, res));
-app.post("/led/off", (req, res) => ioCtrl.turnOff(req, res));
-app.post("/led/toggle", (req, res) => ioCtrl.toggle(req, res));
-
-// Server Status Test
-app.get("/status", (req, res) => {
-  res.json({ status: "OK", message: "Server online" });
-});
-
-// Socket.IO connection (optional)
+// Socket.IO LED event
 io.on("connection", socket => {
-  console.log("Client connected:", socket.id);
-  socket.emit("led_state", ioCtrl.ledState);
-
-  socket.on("disconnect", () =>
-    console.log("Client disconnected:", socket.id)
-  );
+  ioCtrl.handleSocket(socket);
 });
+
+// Status test
+app.get("/status", (req, res) => res.json({ status: "OK", message: "Server online" }));
 
 server.listen(PORT, () => {
-  console.log(`🚀 Server running on port ${PORT}`);
-  console.log(`🔗 Allowed Origin: ${FRONTEND_URL}`);
+  console.log(`Server running on port ${PORT}`);
 });
 
 module.exports = { server, io };
